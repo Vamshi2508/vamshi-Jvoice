@@ -1,0 +1,18 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# The original '/build' above is anchored to the project root, so it misses
+# the module output at 'app/build' - which is where a Gradle build actually
+# writes. Unanchored, this catches every module's build directory.
+build/
+.kotlin/
+*.apk
+*.aab

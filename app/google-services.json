@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "180885422721",
+    "firebase_url": "https://jvoice-b4b2e-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "jvoice-b4b2e",
+    "storage_bucket": "jvoice-b4b2e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:180885422721:android:cb5a5b8aa4af6514234380",
+        "android_client_info": {
+          "package_name": "com.jvoice.news"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWurjsuS9oPglfF2ydmHZ_d2UHW4h8Pe8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
