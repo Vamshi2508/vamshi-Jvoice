@@ -1,0 +1,164 @@
+rules_version = '2';
+
+// J Voice Firestore rules.
+//
+// Firestore holds the CONTENT — news articles, categories, study material, the
+// question bank, exams. Auth and the session signals (role, isLogin,
+// forceLogoutAt) stay in the Realtime Database, where the kill-switch and
+// force-logout listeners are built on value events.
+//
+// ## Roles come from a custom claim, not a document
+//
+// Firestore rules cannot read the Realtime Database, so the caller's role has to
+// reach these rules some other way. Two options:
+//
+//   * mirror every user into a Firestore `staff/{uid}` document and `get()` it —
+//     correct, but that is a billed document read on EVERY rule evaluation, on
+//     every document in a list query.
+//   * put the role in a custom claim on the ID token — free, and already in the
+//     request.
+//
+// The claim wins. It is set by the Admin SDK in seed-staff.mjs, which is also
+// what writes users/{uid}/role in the RTDB, so the two cannot drift.
+//
+// The trade-off, stated plainly: a role change does not take effect until the
+// client's ID token refreshes (about an hour, or immediately on sign-out/in).
+// That is acceptable for role changes, which are rare and administrative. It is
+// NOT how revocation works — revocation is forceLogoutAt in the RTDB, which is
+// instant.
+//
+// Readers and students are anonymous, so published content must be readable with
+// no auth at all. Everything else is desk-only, and the default is deny.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --------------------------------------------------------------- helpers
+
+    function role() {
+      return request.auth != null ? (request.auth.token.role is string ? request.auth.token.role : '') : '';
+    }
+
+    // A reporter is on the news desk but cannot publish — see the articles rules.
+    function isNewsDesk() {
+      return role() in ['reporter', 'editor', 'news_admin', 'super_admin'];
+    }
+
+    function isNewsEditor() {
+      return role() in ['editor', 'news_admin', 'super_admin'];
+    }
+
+    function isNewsAdmin() {
+      return role() in ['news_admin', 'super_admin'];
+    }
+
+    function isStudyDesk() {
+      return role() in ['content_creator', 'exam_admin', 'study_admin', 'super_admin'];
+    }
+
+    function isStudyAdmin() {
+      return role() in ['study_admin', 'super_admin'];
+    }
+
+    function isExamAdmin() {
+      return role() in ['exam_admin', 'study_admin', 'super_admin'];
+    }
+
+    // ============================================================ news
+
+    match /articles/{articleId} {
+      // Anonymous readers need published stories. Anything else is desk-only —
+      // an unpublished draft must not be readable by the public.
+      allow read: if resource.data.status == 'PUBLISHED' || isNewsDesk();
+
+      // A reporter files as themselves. Pinning reporterId to the caller stops
+      // one reporter filing under another's byline.
+      allow create: if isNewsDesk()
+                    && request.resource.data.reporterId == request.auth.uid
+                    // A reporter cannot self-publish; the desk publishes.
+                    && (isNewsEditor() || request.resource.data.status in ['DRAFT', 'SUBMITTED']);
+
+      allow update: if isNewsEditor()
+                    || (
+                      isNewsDesk()
+                      && resource.data.reporterId == request.auth.uid
+                      // Only while the story is back in the reporter's hands.
+                      && resource.data.status in ['DRAFT', 'REJECTED', 'SENT_BACK']
+                      && request.resource.data.status in ['DRAFT', 'SUBMITTED']
+                      // The byline cannot be reassigned by the reporter.
+                      && request.resource.data.reporterId == resource.data.reporterId
+                    );
+
+      allow delete: if isNewsAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isNewsAdmin();
+    }
+
+    match /newsNotifications/{id} {
+      // Broadcast notifications are public; targeted ones are desk-only.
+      allow read: if resource.data.targetRole == null || isNewsDesk();
+      allow write: if isNewsEditor();
+    }
+
+    // Reader-side engagement. A reader is anonymous, so these are the one place
+    // an unauthenticated write is allowed — and it is bounded to reports and
+    // view counts, never to the article body.
+    match /articleReports/{reportId} {
+      allow create: if true;
+      allow read, update, delete: if isNewsAdmin();
+    }
+
+    // =========================================================== study
+
+    match /subjects/{id} {
+      allow read: if true;
+      allow write: if isStudyAdmin();
+    }
+
+    match /topics/{id} {
+      allow read: if true;
+      allow write: if isStudyAdmin();
+    }
+
+    match /examTracks/{id} {
+      allow read: if true;
+      allow write: if isStudyAdmin();
+    }
+
+    match /studyArticles/{id} {
+      allow read: if resource.data.status == 'PUBLISHED' || isStudyDesk();
+      allow create, update: if isStudyDesk();
+      allow delete: if isStudyAdmin();
+    }
+
+    match /questions/{id} {
+      // Desk-only, deliberately. A student meets questions through an exam
+      // attempt; a readable bank puts every answer one query away.
+      allow read: if isStudyDesk();
+      allow write: if isStudyDesk();
+    }
+
+    match /quizzes/{id} {
+      // The quiz document carries only question IDs, not answers, so it is safe
+      // to read. The questions themselves stay closed above.
+      allow read: if true;
+      allow write: if isStudyDesk();
+    }
+
+    match /exams/{id} {
+      allow read: if true;
+      allow write: if isExamAdmin();
+    }
+
+    // Attempts and results belong to a student who has no account, so they
+    // cannot be scoped by uid. They stay device-local for now and are not
+    // stored here at all — hence no rule. Adding student accounts later means
+    // adding a rule keyed on request.auth.uid, not loosening one.
+
+    // Anything not matched above is denied. Left implicit rather than written as
+    // a catch-all, because a catch-all match block would shadow these.
+  }
+}

@@ -1,0 +1,11 @@
+# The Android app is versioned separately, in the jvoice-android repo.
+# It sits inside this folder only because the two halves of J Voice are
+# developed side by side; nothing here builds or deploys it.
+J Voice android app/
+
+# Firebase CLI deploy cache - a local record of what was last uploaded.
+.firebase/
+
+# Belt and braces: every package folder has its own ignore, but a stray
+# install anywhere under the root should never be committed.
+node_modules/

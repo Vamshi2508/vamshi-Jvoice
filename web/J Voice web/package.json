@@ -1,0 +1,24 @@
+{
+  "name": "jvoice-admin-web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "J Voice admin & editor console - News (Module 1) and Study (Module 2)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "smoke": "node smoke.mjs screenshots"
+  },
+  "dependencies": {
+    "firebase": "^12.18.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.2",
+    "playwright": "^1.62.1",
+    "vite": "^5.4.8"
+  }
+}
