@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,6 +17,17 @@ plugins {
  * Consequence worth knowing: dropping google-services.json in is the ONLY step
  * needed to switch the app over. No code or Gradle edit.
  */
+/**
+ * Release signing. The keystore and its passwords live in keystore.properties,
+ * which is gitignored - so a clone without that file still builds debug, and
+ * only this machine (and your backup) can produce an upload-signed bundle.
+ */
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+val canSignRelease = keystoreProps.getProperty("storeFile") != null
+
 val googleServicesFile = file("google-services.json")
 val hasFirebaseConfig = googleServicesFile.exists()
 
@@ -30,14 +43,14 @@ if (hasFirebaseConfig) {
 
 android {
     namespace = "com.jvoice.news"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.jvoice.news"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
-        versionName = "1.0-module1-prototype"
+        versionName = "1.0.0"
         vectorDrawables { useSupportLibrary = true }
 
         // Mirrors the Gradle-time check above into the generated BuildConfig, so
@@ -46,10 +59,25 @@ android {
         buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString())
     }
 
+    signingConfigs {
+        if (canSignRelease) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Shrinking matters for the Play download size; the keep rules that
+            // make it safe for Firestore reflection are in proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (canSignRelease) signingConfig = signingConfigs.getByName("release")
         }
     }
 

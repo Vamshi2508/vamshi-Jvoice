@@ -16,3 +16,11 @@ build/
 .kotlin/
 *.apk
 *.aab
+
+# Release signing material. Committing either of these would hand anyone with
+# repo access the ability to sign builds as J Voice. Keep both backed up
+# OFF this machine - losing them means you cannot ship an update under the
+# same upload key.
+*.jks
+*.keystore
+keystore.properties
