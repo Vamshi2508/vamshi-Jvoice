@@ -1,0 +1,22 @@
+{
+  "name": "jvoice-firebase",
+  "private": true,
+  "version": "1.0.0",
+  "description": "J Voice Firebase rules and staff seeding",
+  "type": "module",
+  "scripts": {
+    "seed": "node seed-staff.mjs",
+    "seed:dry": "node seed-staff.mjs --dry-run",
+    "seed:reset-passwords": "node seed-staff.mjs --reset-passwords",
+    "seed:news": "node seed-news.mjs",
+    "seed:news:dry": "node seed-news.mjs --dry-run",
+    "seed:content": "node seed-content.mjs",
+    "seed:content:dry": "node seed-content.mjs --dry-run",
+    "deploy:rules": "firebase deploy --only database,firestore:rules --config ../firebase.json --project jvoice-b4b2e",
+    "deploy:db-rules": "firebase deploy --only database --config ../firebase.json --project jvoice-b4b2e",
+    "deploy:web": "npm --prefix \"../J Voice web\" run build && firebase deploy --only hosting --config ../firebase.json --project jvoice-b4b2e"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.3.0"
+  }
+}

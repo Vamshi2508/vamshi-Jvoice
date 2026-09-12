@@ -1,0 +1,20 @@
+BREAK /console
+BREAK /news/review
+BREAK /news/articles
+BREAK /news/categories
+BREAK /news/reporters
+BREAK /news/editors
+BREAK /news/shorts
+BREAK /study/exam-types
+BREAK /study/subjects
+BREAK /study/topics
+BREAK /study/content
+BREAK /study/questions
+BREAK /study/exams
+BREAK /study/results
+BREAK /study/creators
+BREAK /system/users
+BREAK /system/roles
+BREAK /system/settings
+BREAK /system/flags
+done
