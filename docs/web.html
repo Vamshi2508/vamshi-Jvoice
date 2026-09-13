@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J Voice — Web App Documentation</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="badge info">Web · Admin &amp; Reader Console</span>
+    <h1>J Voice — Web App</h1>
+    <p>React + Vite admin/editor console and public reader site for the J Voice Telugu/English news &amp; exam-prep platform. Documents current code state as of the monorepo merge, not the (partly stale) project README.</p>
+    <div class="meta">Source: <code>web/</code> in the Jvoice monorepo &middot; Firebase project <code>jvoice-b4b2e</code></div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#overview">Overview</a>
+    <a href="#stack">Tech Stack</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#firebase">Firebase</a>
+    <a href="#flows">User Flows</a>
+    <a href="#state">State &amp; Data Flow</a>
+    <a href="#brand">Brand</a>
+    <a href="#status">Implementation Status</a>
+    <a href="#issues">Known Issues</a>
+    <a href="#files">Key Files</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<section id="overview">
+  <h2>1. Overview &amp; Purpose</h2>
+  <p>J Voice is a bilingual (Telugu/English) regional news + competitive-exam-prep platform. The <code>web/</code> folder is <strong>not</strong> the public product's mobile experience — it is the <strong>staff console</strong> (news desk + study content authoring) plus a lightweight <strong>public reader website</strong>, sharing one Firebase backend with the Android app.</p>
+  <div class="card">
+    <h3>Four console personas (collapsed from the Android app's ten roles)</h3>
+    <table>
+      <tr><th>Persona</th><th>Demo account</th><th>Scope</th></tr>
+      <tr><td><strong>Admin</strong></td><td>Ravi Teja Sharma</td><td>Full control — News + Study + Shorts + People + System</td></tr>
+      <tr><td><strong>Editor</strong></td><td>Sridevi Naidu</td><td>News review queue only, scoped to own reporters/sections</td></tr>
+      <tr><td><strong>Reporter</strong></td><td>Kiran Kumar</td><td>Files stories only — cannot approve/publish, even their own</td></tr>
+      <tr><td><strong>Content Creator</strong></td><td>Sunitha Rao</td><td>Study module authoring only (articles + question bank)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="stack">
+  <h2>2. Tech Stack</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>Frontend</h3>
+      <ul>
+        <li>React 18.3 + Vite 5.4 (plain JS, no TypeScript)</li>
+        <li><code>react-router-dom</code> 6.26</li>
+        <li>Hand-rolled <code>reducer + Context</code> state (no Redux/Zustand)</li>
+        <li>One global <code>styles.css</code> (CSS variables, light/dark) + separate <code>reader/reader.css</code></li>
+        <li>Custom bilingual <code>{en, te}</code> value type (<code>i18n/localized.js</code>) — mirrors Android's <code>LocalizedText</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Backend &amp; tooling</h3>
+      <ul>
+        <li>Firebase JS SDK 12.18 — Auth, Realtime Database, Firestore</li>
+        <li>Separate <code>firebase/</code> package (<code>firebase-admin</code>) for rules + seed scripts</li>
+        <li><code>build-standalone.mjs</code> — hash-routed single-file build</li>
+        <li>Playwright <code>smoke.mjs</code> end-to-end smoke test</li>
+        <li>Hosting via root <code>firebase.json</code> (serves <code>web/J Voice web/dist</code>)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>3. Architecture</h2>
+  <p>Two independent apps share one router and one Firebase project, but deliberately do not share data-fetching code:</p>
+  <div class="mermaid">
+graph TD
+  R["Browser Router (main.jsx)"] --> PUB["Public Reader<br/>/ and /read/:id<br/>anonymous, read-only"]
+  R --> LOGIN["/login<br/>Staff sign-in"]
+  R --> CONSOLE["/console/*<br/>Staff Console<br/>(RequireStaff gate)"]
+
+  PUB --> PF["reader/publicFeed.js<br/>own Firestore listeners<br/>status = PUBLISHED only"]
+  CONSOLE --> STORE["store/store.jsx<br/>reducer + Context"]
+  STORE --> FSD["store/firestoreData.js<br/>bidirectional codecs"]
+  STORE --> FLAGS["store/featureFlags.js<br/>RTDB /flags (live switches)"]
+  LOGIN --> AUTH["store/staffAuth.js<br/>Firebase Auth + RTDB users/{uid}"]
+
+  FSD <--> FIRESTORE[("Firestore<br/>articles, categories, subjects,<br/>topics, studyArticles, questions, exams")]
+  PF --> FIRESTORE
+  AUTH <--> RTDB[("Realtime Database<br/>users, flags, failedLoginAttempts")]
+  FLAGS <--> RTDB
+  </div>
+  <h3>Folder layout</h3>
+  <pre><code>J Voice web/src/
+  main.jsx            React root, Router, AppProvider
+  App.jsx              routes: public reader + console, role-gated wrappers
+  firebase.js           Firebase init, toEmail() login-id expansion
+  store/
+    store.jsx            reducer (~50 action types) + AuthProvider + selectors
+    staffAuth.js          real sign-in, RTDB role lookup, force-logout watch
+    firestoreData.js      Firestore &lt;-&gt; console codecs, diff-based write-back
+    featureFlags.js       RTDB /flags (read live by the Android app)
+  components/            Layout, StaffSignIn, People, AccountEditor, ui primitives
+  data/                  newsData.js, studyData.js, shortsData.js (seed/mock)
+  i18n/localized.js       {en, te} bilingual helpers
+  reader/                Reader.jsx, publicFeed.js, reader.css (public site)
+  pages/                 Login, Dashboard, News, Shorts, Study, Exams, System, Roles, FeatureFlags...</code></pre>
+</section>
+
+<section id="firebase">
+  <h2>4. Firebase Integration</h2>
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>Auth</h3>
+      <p>Email/password. Staff type a bare username → expanded to <code>username@jvoicenews.com</code>. Demo persona buttons (no password) coexist with real sign-in in the same <code>AuthProvider</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Realtime Database</h3>
+      <p><code>users/{uid}</code> (role, isLogin kill-switch, forceLogoutAt, lastLoginAt), <code>flags/{key}</code> (world-readable), <code>failedLoginAttempts</code>, <code>passwordResetRequests</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Firestore</h3>
+      <p><code>articles, categories, subjects, topics, studyArticles, questions, exams, examTracks</code>. Role checks use a <strong>custom auth claim</strong>, not a document read.</p>
+    </div>
+  </div>
+  <p>Security rules (<code>firebase/database.rules.json</code>, <code>firebase/firestore.rules</code>) are default-deny, with <code>role</code> writable only by <code>super_admin</code>, and anonymous readers scoped to published content only. This is the <strong>same Firebase project</strong> the Android app uses — see the audit report for how well the two clients agree on schema.</p>
+</section>
+
+<section id="flows">
+  <h2>5. Key User Flows</h2>
+
+  <h3>Public reader (anonymous)</h3>
+  <div class="mermaid">
+graph LR
+  A[Land on "/"] --> B[Breaking-news ticker + category chips]
+  B --> C[Lead + grid of published articles]
+  C --> D["Study &amp; exams strip"]
+  D --> E["Tap article → /read/:id"]
+  C --> F["Staff sign-in band (footer) → /login"]
+  </div>
+
+  <h3>Staff console</h3>
+  <div class="mermaid">
+graph TD
+  L["/login — real sign-in or demo persona"] --> D["Dashboard (role-specific)"]
+  D --> N["News: Review Queue, All News,<br/>Categories, Reporters/Editors"]
+  D --> MS["My Stories (Reporter only)"]
+  D --> S["Shorts: simulated news→video pipeline"]
+  D --> ST["Study: Exam Types, Subjects,<br/>Topics, Study Material, Content Creators"]
+  D --> EX["Exams: Question Bank,<br/>Exams &amp; Tests, Results &amp; Ranks"]
+  D --> SYS["System: Users, Settings,<br/>Roles, Feature Flags"]
+
+  N --> RQ["Open story → edit →<br/>Approve&amp;Publish / Approve only /<br/>Reject / Send back"]
+  </div>
+  <p class="callout">Route gating (<code>App.jsx</code>) uses only four hardcoded personas (<code>Admin/Editor/Reporter/Content Creator</code>) — the granular <strong>Roles permission matrix UI has no functional effect</strong> on this gating (see Known Issues).</p>
+</section>
+
+<section id="state">
+  <h2>6. State Management &amp; Data Flow</h2>
+  <ul>
+    <li>Single <code>reducer(state, action)</code> handles ~50 action types; every mutation also appends a line to <code>state.activity</code> (the session log).</li>
+    <li><code>initialState</code> starts <strong>empty</strong> for everything Firestore-backed — populated only after sign-in via <code>useFirestoreSync</code> hydration.</li>
+    <li><code>users, settings, roles, templates, shorts</code> are seeded from local mock files and <strong>never synced</strong> to any backend — they reset on reload.</li>
+    <li>Console writes go back to Firestore via a <strong>diff against a recorded baseline</strong> (<code>syncCollection</code>) rather than one handler per action type.</li>
+    <li>The public reader uses a completely separate, read-only listener set (<code>reader/publicFeed.js</code>) — it never touches the console's store.</li>
+  </ul>
+</section>
+
+<section id="brand">
+  <h2>7. Brand Assets</h2>
+  <p>Single source of truth lives in top-level <code>brand/</code>: <code>jvoice-logo-source.jpg</code> + <code>make_assets.py</code> (a Pillow script that flood-fills the black background from the edges inward, using a max-channel test to avoid making the navy wordmark plate translucent). It regenerates assets for <strong>both</strong> the Android app and the web app's <code>public/</code> folder.</p>
+  <p>Palette: scarlet <code>#DD0B1E</code>, royal blue <code>#17318F</code>, navy <code>#0D1F63</code>, silver <code>#E9ECF1</code>. Deliberate divergence: <strong>the console's UI accent uses blue, not scarlet</strong> — scarlet is already <code>--danger</code>, and reusing it for "current page" would collide with "delete".</p>
+</section>
+
+<section id="status">
+  <h2>8. Implementation Status</h2>
+  <div class="finding note">
+    <h4>⚠ Top-level README.md / ACTIONS.md are stale</h4>
+    <p>Both state prominently: <em>"Prototype — local mock data only, no backend, no Firebase, no real authentication."</em> This is false for the current code. <code>firebase/README.md</code> and the source itself are the accurate references.</p>
+  </div>
+  <table>
+    <tr><th>Area</th><th>Status</th><th>Detail</th></tr>
+    <tr><td>Auth</td><td><span class="badge ok">Real</span></td><td>Firebase Auth + RTDB role/kill-switch/force-logout, live</td></tr>
+    <tr><td>News (articles, categories)</td><td><span class="badge ok">Real</span></td><td>Firestore-backed, live snapshot listeners both sides</td></tr>
+    <tr><td>Study content (subjects/topics/articles/questions/exams)</td><td><span class="badge ok">Real (web side)</span></td><td>Firestore-backed on web — <strong>but see audit report: Android Study module does not read it yet</strong></td></tr>
+    <tr><td>Feature Flags page</td><td><span class="badge ok">Real</span></td><td>RTDB-backed, read live by the Android app</td></tr>
+    <tr><td>AI Shorts pipeline</td><td><span class="badge warn">Simulated</span></td><td>Instant state transitions, canned text — explicitly labeled "no AI call, no rendering"</td></tr>
+    <tr><td>Users / Settings / Roles / Templates</td><td><span class="badge bad">Mock, unsynced</span></td><td>Never written to Firestore/RTDB — reset on reload</td></tr>
+    <tr><td>Exam results/attempts</td><td><span class="badge bad">No storage path</span></td><td>Rules explicitly say attempts "stay device-local for now"</td></tr>
+  </table>
+</section>
+
+<section id="issues">
+  <h2>9. Known Issues (verified in code)</h2>
+
+  <div class="finding">
+    <h4>Article body/description silently blanked on Firestore round-trip</h4>
+    <p>Console UI (<code>News.jsx</code>, <code>MyStories.jsx</code>) reads/writes <code>headline, description, body</code>. The Firestore codec that actually syncs <code>articles</code> (<code>firestoreData.js</code>) uses <code>headline, shortDescription, content</code> — matching the Android schema, not the console UI. Result: <code>description</code>/<code>body</code> are <code>undefined</code> → written as blank <code>{en:'', te:''}</code>. The public reader (which correctly reads <code>shortDescription</code>/<code>content</code>) will show a blank standfirst and body for any console-authored article.</p>
+    <div class="file">src/pages/News.jsx, src/pages/MyStories.jsx vs src/store/firestoreData.js (CODECS.articles)</div>
+  </div>
+
+  <div class="finding">
+    <h4>Same class of bug for Categories/Subjects/Topics/Exam Types</h4>
+    <p>Management pages read/write plain <code>nameEn</code>/<code>nameTe</code> fields; the Firestore codecs for these four collections use a single bilingual <code>name: {en, te}</code> field. Once Firestore hydration replaces local state, these editing UIs render blank names and edits write garbage back.</p>
+    <div class="file">src/pages/News.jsx (Categories), src/pages/Study.jsx (Subjects/Topics/ExamTypes) vs src/store/firestoreData.js</div>
+  </div>
+
+  <div class="finding">
+    <h4>Exam "blueprint" dropped on Firestore sync</h4>
+    <p><code>Exams.jsx</code>'s exam objects carry a <code>blueprint</code> array driving the paper editor, bank-coverage checks and preview. The Firestore codec for <code>exams</code> has no <code>blueprint</code> field — any exam re-hydrated after reload loses its blueprint, breaking the editor and paper preview.</p>
+    <div class="file">src/pages/Exams.jsx vs src/store/firestoreData.js</div>
+  </div>
+
+  <div class="finding">
+    <h4>Reporter picker in "New article" always empty</h4>
+    <p><code>state.users.filter(u =&gt; u.role === 'Reporter')</code> — but user records only ever have a <code>roles</code> array. No user object has a singular <code>.role</code>, so this filter always returns nothing.</p>
+    <div class="file">src/pages/News.jsx</div>
+  </div>
+
+  <div class="finding risk">
+    <h4>Roles permission matrix is decorative</h4>
+    <p>The fine-grained CRUD permission editor has no effect on actual access control — route gating checks only the four hardcoded personas, and real backend security is enforced separately via Firebase custom claims.</p>
+    <div class="file">src/pages/Roles.jsx vs src/App.jsx (AdminOnly, Allow)</div>
+  </div>
+
+  <div class="finding risk">
+    <h4>Two separate "feature flag" systems</h4>
+    <p><code>System.jsx</code> Settings toggles are purely in-memory and read by nothing else. <code>FeatureFlags.jsx</code> is a separate, real RTDB-backed set the Android app actually reads. Visually similar, easy to confuse when demoing or documenting.</p>
+    <div class="file">src/pages/System.jsx vs src/pages/FeatureFlags.jsx</div>
+  </div>
+
+  <div class="finding risk">
+    <h4>Real staff account with no matching mock user row → blank dashboard</h4>
+    <p><code>useMe()</code> resolves "me" by matching username/email against the local mock <code>users</code> array. A real account provisioned purely via <code>seed-staff.mjs</code>/RTDB with no corresponding mock row gets a blank Editor/Creator/Reporter dashboard (they <code>return null</code>) even though sign-in succeeded.</p>
+    <div class="file">src/pages/RoleDashboards.jsx</div>
+  </div>
+
+  <div class="finding note">
+    <h4>Dead seed imports</h4>
+    <p>Several <code>seed*</code> imports from <code>data/newsData.js</code>/<code>data/studyData.js</code> are imported into <code>store.jsx</code> but never used — leftover from before Firestore sync replaced local seeding. A fresh/newly-provisioned console shows an empty catalogue until seed scripts are run or content is authored live.</p>
+    <div class="file">src/store/store.jsx</div>
+  </div>
+</section>
+
+<section id="files">
+  <h2>10. Key File Reference</h2>
+  <pre><code>src/App.jsx, main.jsx, firebase.js
+src/store/store.jsx, staffAuth.js, firestoreData.js, featureFlags.js
+src/reader/Reader.jsx, publicFeed.js
+src/pages/News.jsx, Study.jsx, Exams.jsx, Shorts.jsx, System.jsx, Roles.jsx, FeatureFlags.jsx, Dashboard.jsx, RoleDashboards.jsx, MyStories.jsx
+src/components/People.jsx, StaffSignIn.jsx, Layout.jsx
+src/data/newsData.js, studyData.js
+src/i18n/localized.js
+firebase.json, firebase/database.rules.json, firebase/firestore.rules, firebase/README.md
+README.md, ROLES.md, ACTIONS.md, brand/README.md  (note: partly stale, see §9)</code></pre>
+  <div class="crosslink">
+    <a href="android.html">→ Android App Documentation</a>
+    <a href="audit-report.html">→ Audit Report &amp; Cross-App Findings</a>
+  </div>
+</section>
+
+</div>
+<footer>J Voice project documentation — generated from a code-level audit of the merged monorepo.</footer>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });</script>
+</body>
+</html>
