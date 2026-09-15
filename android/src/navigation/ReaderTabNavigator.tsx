@@ -8,12 +8,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
 import { ReaderTabParamList } from './types';
 import { ReaderHomeScreen } from '../screens/reader/ReaderHomeScreen';
-import {
-  ReaderCategoriesScreen,
-  ReaderNotificationsScreen,
-  ReaderProfileScreen,
-  ReaderSavedScreen,
-} from '../screens/reader/StubScreens';
+import { ReaderCategoriesScreen } from '../screens/reader/ReaderCategoriesScreen';
+import { ReaderSavedScreen } from '../screens/reader/ReaderSavedScreen';
+import { ReaderNotificationsScreen } from '../screens/reader/ReaderNotificationsScreen';
+import { ReaderProfileScreen } from '../screens/reader/ReaderProfileScreen';
 import { colors } from '../theme/colors';
 
 const Tab = createBottomTabNavigator<ReaderTabParamList>();

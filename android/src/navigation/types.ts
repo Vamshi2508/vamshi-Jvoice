@@ -1,7 +1,5 @@
 /**
- * Ported from news/navigation/Routes.kt. Only the Reader-facing routes are
- * defined for this first vertical slice; Reporter/Editor/Admin/SuperAdmin
- * param lists are added as those phases are built.
+ * Ported from news/navigation/Routes.kt.
  */
 export type RootStackParamList = {
   Landing: undefined;
@@ -11,6 +9,14 @@ export type RootStackParamList = {
   CategoryNews: { categoryId: string };
   Comments: { articleId: string; authorName: string };
   Search: undefined;
+
+  ReporterStack: undefined;
+  EditorDrawer: undefined;
+  NewsAdminDrawer: undefined;
+  SuperAdminDrawer: undefined;
+
+  ArticleEditor: { articleId?: string } | undefined;
+  ArticleReview: { articleId: string };
 };
 
 export type ReaderTabParamList = {
@@ -19,4 +25,28 @@ export type ReaderTabParamList = {
   ReaderSaved: undefined;
   ReaderNotifications: undefined;
   ReaderProfile: undefined;
+};
+
+export type ReporterStackParamList = {
+  ReporterDashboard: undefined;
+  MyNews: undefined;
+};
+
+export type EditorDrawerParamList = {
+  EditorDashboard: undefined;
+  ReviewQueue: undefined;
+};
+
+export type NewsAdminDrawerParamList = {
+  AdminDashboard: undefined;
+  NewsManagement: undefined;
+  CategoryManagement: undefined;
+  ReporterManagement: undefined;
+};
+
+export type SuperAdminDrawerParamList = {
+  SuperAdminDashboard: undefined;
+  UserManagement: undefined;
+  RoleManagement: undefined;
+  SystemSettings: undefined;
 };

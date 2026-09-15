@@ -5,7 +5,7 @@
  * Firestore access from the component.
  */
 import React, { useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNewsStore } from '../../data/news/useNewsStore';
@@ -48,7 +48,12 @@ export function ReaderHomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListHeaderComponent={
         <View>
-          <Text style={styles.title}>J Voice</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>J Voice</Text>
+            <Pressable onPress={() => navigation.navigate('Search')}>
+              <Text style={styles.searchIcon}>🔍</Text>
+            </Pressable>
+          </View>
           {isLoading && <Text style={styles.loading}>Loading news…</Text>}
           {breaking.length > 0 && (
             <Section title="Breaking News">
@@ -109,7 +114,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16 },
-  title: { fontSize: 24, fontWeight: '800', color: colors.royalBlue, marginBottom: 12 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  title: { fontSize: 24, fontWeight: '800', color: colors.royalBlue },
+  searchIcon: { fontSize: 20 },
   loading: { color: colors.textDim, marginBottom: 8 },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 8, marginTop: 4 },

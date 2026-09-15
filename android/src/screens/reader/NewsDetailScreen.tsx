@@ -2,21 +2,32 @@
  * Ported from news/ui/reader/NewsDetailScreen.kt.
  */
 import React, { useEffect } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNewsStore } from '../../data/news/useNewsStore';
+import { useEngagementStore } from '../../data/news/useEngagementStore';
+import { useAuthStore } from '../../core/auth/useAuthStore';
 import { useCurrentLanguage, ltGet } from '../../core/i18n/useCurrentLanguage';
 import { colors } from '../../theme/colors';
 import { RootStackParamList } from '../../navigation/types';
 
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'NewsDetail'>;
 
 export function NewsDetailScreen() {
+  const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
   const article = useNewsStore(s => s.articleById(params.articleId));
   const categories = useNewsStore(s => s.categories);
   const registerView = useNewsStore(s => s.registerView);
   const language = useCurrentLanguage();
+  const user = useAuthStore(s => s.currentUser());
+  const engagement = useEngagementStore(s => s.engagementFor(params.articleId));
+  const commentCount = useEngagementStore(s => s.commentCount(params.articleId));
+  const toggleLike = useEngagementStore(s => s.toggleLike);
+  const toggleDislike = useEngagementStore(s => s.toggleDislike);
+  const submitReport = useEngagementStore(s => s.submitReport);
 
   useEffect(() => {
     registerView(params.articleId).catch(() => {});
@@ -60,6 +71,21 @@ export function NewsDetailScreen() {
           ))}
         </View>
       )}
+
+      <View style={styles.engagementRow}>
+        <Pressable style={styles.engagementButton} onPress={() => toggleLike(article.id)}>
+          <Text style={[styles.engagementText, engagement.myReaction === 'LIKE' && styles.engagementActive]}>👍 {engagement.likes}</Text>
+        </Pressable>
+        <Pressable style={styles.engagementButton} onPress={() => toggleDislike(article.id)}>
+          <Text style={[styles.engagementText, engagement.myReaction === 'DISLIKE' && styles.engagementActive]}>👎 {engagement.dislikes}</Text>
+        </Pressable>
+        <Pressable style={styles.engagementButton} onPress={() => navigation.navigate('Comments', { articleId: article.id, authorName: user?.name ?? 'Reader' })}>
+          <Text style={styles.engagementText}>💬 {commentCount}</Text>
+        </Pressable>
+        <Pressable style={styles.engagementButton} onPress={() => submitReport(article.id, 'OTHER', '', user?.name ?? 'Reader')}>
+          <Text style={styles.engagementText}>⚑ Report</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -83,4 +109,15 @@ const styles = StyleSheet.create({
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
   tagChip: { backgroundColor: colors.silver, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
   tagText: { fontSize: 12, color: colors.royalBlue },
+  engagementRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  engagementButton: { paddingVertical: 6 },
+  engagementText: { color: colors.textDim, fontWeight: '600' },
+  engagementActive: { color: colors.scarlet },
 });

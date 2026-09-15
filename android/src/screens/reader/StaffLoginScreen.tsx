@@ -8,6 +8,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../../core/auth/useAuthStore';
 import { colors } from '../../theme/colors';
 import { RootStackParamList } from '../../navigation/types';
+import { routeForRole } from '../../navigation/roleRouting';
+import { newsRoleForCode, jvRoleFromCode } from '../../core/auth/JvRole';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -20,7 +22,8 @@ export function StaffLoginScreen() {
 
   useEffect(() => {
     if (loginState.status === 'success') {
-      navigation.reset({ index: 0, routes: [{ name: 'ReaderTabs' }] });
+      const role = newsRoleForCode(jvRoleFromCode(loginState.session.role));
+      navigation.reset({ index: 0, routes: [{ name: role ? routeForRole(role) : 'ReaderTabs' }] });
     }
   }, [loginState, navigation]);
 
