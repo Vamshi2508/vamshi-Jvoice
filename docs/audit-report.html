@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J Voice — Audit Report</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="badge info">Audit Report</span>
+    <h1>J Voice — Monorepo Merge &amp; Codebase Audit</h1>
+    <p>What was done to set up the single "Jvoice" repository, and what a full code-level audit of both apps found — the starting point for planning enhancements.</p>
+    <div class="meta">Prepared 2026-09-13</div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#session">Session Summary</a>
+    <a href="#repo">Resulting Repo Structure</a>
+    <a href="#cross">Cross-App Findings</a>
+    <a href="#priorities">Enhancement Priorities</a>
+    <a href="#decisions">Open Decisions</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<section id="session">
+  <h2>1. Session Summary — What Was Done</h2>
+  <ol>
+    <li>Cloned <code>jvoice-web</code> (owner <code>rameshsheela</code>) and checked out the pre-existing remote branch <code>vamshiJvoice@12/09/26</code>.</li>
+    <li>Created a new local merged repository at <code>D:\Learning_Road_Map\Jvoice</code>, using <code>git subtree add</code> to bring in <strong>full commit history</strong> from both source repos:
+      <ul>
+        <li><code>web/</code> ← <code>jvoice-web</code> (branch <code>vamshiJvoice@12/09/26</code>)</li>
+        <li><code>android/</code> ← <code>jvoice-android</code> (branch <code>main</code>)</li>
+      </ul>
+    </li>
+    <li>Created GitHub repo <code>VamshiKrishna2508/Jvoice</code> (office account) by mistake — the user identified this as the wrong account.</li>
+    <li>Created the correct repo <strong><code>Vamshi2508/vamshi-Jvoice</code></strong> (personal account) and re-pointed the merged local repo's <code>origin</code> there.</li>
+    <li>Pushed both <code>main</code> and <code>vamshiJvoice@12/09/26</code> branches. <code>main</code> is branch-protected (requires a PR) — opened and merged <strong>PR #1</strong> to bring the merge into <code>main</code>.</li>
+    <li>Deleted the mistaken office repo, <code>VamshiKrishna2508/Jvoice</code> (user-confirmed, user completed the GitHub sudo-mode re-auth step).</li>
+    <li>Ran a full code-level audit of both apps (this report + the two linked documents).</li>
+  </ol>
+</section>
+
+<section id="repo">
+  <h2>2. Resulting Repository Structure</h2>
+  <div class="mermaid">
+graph TD
+  REPO["Vamshi2508/vamshi-Jvoice<br/>(private)"] --> MAIN["main (protected, PR-only)"]
+  REPO --> WORK["vamshiJvoice@12/09/26 (working branch)"]
+  MAIN --> WEBF["web/  — full jvoice-web history"]
+  MAIN --> ANDF["android/  — full jvoice-android history"]
+  MAIN --> DOCS["docs/  — web.html, android.html, audit-report.html"]
+  </div>
+  <p class="callout">Local working copy: <code>D:\Learning_Road_Map\Jvoice</code>. The original standalone <code>jvoice-web</code> clone at <code>D:\Learning_Road_Map\Jvoice_Space</code> was left untouched and is no longer the active project folder.</p>
+</section>
+
+<section id="cross">
+  <h2>3. Cross-App Findings</h2>
+  <p>Individually, the web and Android audits (see <a href="web.html">web.html</a> / <a href="android.html">android.html</a>) each flagged real bugs. Comparing them against each other surfaces the most important finding for planning enhancements:</p>
+
+  <div class="finding risk">
+    <h4>★ Study content authored on the web console never reaches the Android app</h4>
+    <p>The web console's Study pages (Subjects, Topics, Study Material, Question Bank, Exams) <strong>are already Firestore-backed</strong> — content a Content Creator publishes there is written live to <code>subjects/topics/studyArticles/questions/exams</code> in Firestore. But the Android app's Study module (<code>StudyRepository</code>, <code>ExamTrackRepository</code>) <strong>still reads exclusively from <code>MockDataSource</code></strong> and never queries Firestore, even though the matching codecs (<code>StudyCodec.kt</code>) and collection names already exist on the Android side.</p>
+    <p><strong>Practical effect:</strong> a Content Creator can publish new study material or questions through the web console all day — students in the Android app will never see it. The News module went through exactly this migration already (web ↔ Android both read/write the same Firestore <code>articles</code> collection); Study has the schema in place but the Android read-side wiring was never finished.</p>
+  </div>
+
+  <div class="finding note">
+    <h4>Both apps' top-level docs are stale in the same way</h4>
+    <p>Web's <code>README.md</code>/<code>ACTIONS.md</code> and Android's <code>README.md</code>/<code>SCREENS.md</code> all independently claim "no backend, no Firebase, no real auth" — all four are describing an earlier prototype. Both apps have since gained real Firebase Auth/RTDB, and the News module on both sides is Firestore-backed. Worth a documentation pass once the enhancement work below is scoped, so the docs don't keep misleading new contributors.</p>
+  </div>
+
+  <div class="finding note">
+    <h4>AI Shorts exists — fully — on both platforms, both fully mocked</h4>
+    <p>Web's <code>Shorts.jsx</code> and Android's 12-file <code>aishorts/</code> module both implement a complete news→short-video pipeline UI with zero real AI/TTS/render backend behind either. This is consistent between platforms (good), but represents the largest single "fake" surface in the product if AI Shorts is meant to ship for real.</p>
+  </div>
+
+  <div class="finding note">
+    <h4>Security rules are the one place already built for the full role set</h4>
+    <p><code>web/firebase/firestore.rules</code> and <code>database.rules.json</code> already validate against all ten desk roles (<code>reporter, editor, news_admin, content_creator, exam_admin, study_admin, super_admin, ...</code>) via custom claims — this part of the backend is ahead of both clients, not behind them, and can absorb the Android Study migration without rule changes.</p>
+  </div>
+</section>
+
+<section id="priorities">
+  <h2>4. Suggested Enhancement Priorities</h2>
+  <p>Ordered roughly by "blocks the product from working end-to-end" → "polish":</p>
+  <table>
+    <tr><th>#</th><th>Item</th><th>Why it matters</th><th>Where</th></tr>
+    <tr><td>1</td><td>Wire Android Study module to Firestore</td><td>Currently the single biggest gap — web-authored study content never reaches students</td><td>android/study/data/repository/*</td></tr>
+    <tr><td>2</td><td>Fix web article schema mismatch (headline/shortDescription/content)</td><td>Console-authored articles show blank body/standfirst to readers — active data loss</td><td>web/pages/News.jsx, MyStories.jsx</td></tr>
+    <tr><td>3</td><td>Fix web Categories/Subjects/Topics/ExamTypes name-field mismatch</td><td>Same class of silent data loss once Firestore hydration is live for these</td><td>web/pages/News.jsx, Study.jsx</td></tr>
+    <tr><td>4</td><td>Fix exam "blueprint" field missing from Firestore codec</td><td>Exam paper editor and coverage checks break on reload</td><td>web/store/firestoreData.js</td></tr>
+    <tr><td>5</td><td>Fix Android Study desk-identity bug</td><td>Real staff shown as demo persona — risks wrong authorship attribution</td><td>android/study/ui/auth/StudySessionViewModel.kt</td></tr>
+    <tr><td>6</td><td>Restore or intentionally remove the Android Clips tab</td><td>Currently silently empty on every launch — needs a product decision either way</td><td>android/news/data/repository/ClipsRepository.kt</td></tr>
+    <tr><td>7</td><td>Fix web reporter picker (role vs roles field)</td><td>Admin's own "credit to reporter" dropdown in New Article is always empty</td><td>web/pages/News.jsx</td></tr>
+    <tr><td>8</td><td>Decide the fate of the Roles permission matrix UI</td><td>Currently fully decorative — either wire it into real gating or remove it to avoid misleading admins</td><td>web/pages/Roles.jsx, App.jsx</td></tr>
+    <tr><td>9</td><td>Consolidate or clearly separate the two "feature flag" surfaces</td><td>Settings toggles (fake) vs Feature Flags page (real, RTDB) look identical to an admin</td><td>web/pages/System.jsx, FeatureFlags.jsx</td></tr>
+    <tr><td>10</td><td>Real exam attempts/results storage</td><td>Results &amp; Ranks page is fully built on both platforms but has no data path to populate it live</td><td>Firestore schema + rules, both clients</td></tr>
+    <tr><td>11</td><td>Real AI backend for AI Shorts (if this is meant to ship)</td><td>Currently 100% simulated on both platforms</td><td>web/pages/Shorts.jsx, android/aishorts/*</td></tr>
+    <tr><td>12</td><td>Decide handling of committed google-services.json</td><td>Config-management / security review item, not necessarily wrong, but should be a deliberate choice</td><td>android/app/google-services.json</td></tr>
+    <tr><td>13</td><td>Refresh top-level README/ACTIONS/SCREENS docs</td><td>All currently describe a superseded prototype state</td><td>web/README.md, ACTIONS.md, android/README.md, SCREENS.md</td></tr>
+  </table>
+</section>
+
+<section id="decisions">
+  <h2>5. Open Decisions for You</h2>
+  <ul>
+    <li><strong>Clips tab:</strong> bring it back with real content, or remove the tab/feature for now?</li>
+    <li><strong>Roles permission matrix:</strong> invest in wiring it to real access control, or drop it to avoid confusing admins?</li>
+    <li><strong>AI Shorts:</strong> keep as a demo/simulated feature, or is real AI generation in scope for the next milestone?</li>
+    <li><strong>Exam results/attempts:</strong> what's the intended storage model — Firestore per-user subcollection, RTDB, something else — given rules currently say "device-local for now"?</li>
+    <li><strong>google-services.json:</strong> confirmed fine to keep committed as-is, or should it move to a secrets-managed / per-developer setup?</li>
+  </ul>
+  <p class="callout">These docs (this report, <a href="web.html">web.html</a>, <a href="android.html">android.html</a>) are committed under <code>docs/</code> in the repo so they stay versioned alongside the code they describe.</p>
+</section>
+
+</div>
+<footer>J Voice project documentation — generated from a code-level audit of the merged monorepo.</footer>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });</script>
+</body>
+</html>

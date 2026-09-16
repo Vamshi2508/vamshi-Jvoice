@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J Voice — Android App Documentation</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="badge info">Android · Reader, Student &amp; Staff App</span>
+    <h1>J Voice — Android App</h1>
+    <p>Jetpack Compose app serving both the public reader/student audience and, via staff login, the same desk roles as the web console. Documents current code state — the project's own README.md and SCREENS.md describe an older prototype and are stale.</p>
+    <div class="meta">Source: <code>android/</code> in the Jvoice monorepo &middot; Firebase project <code>jvoice-b4b2e</code> (same as web)</div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#overview">Overview</a>
+    <a href="#stack">Tech Stack</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#backend">Backend</a>
+    <a href="#flows">User Flows</a>
+    <a href="#state">State &amp; Data Flow</a>
+    <a href="#status">Implementation Status</a>
+    <a href="#issues">Known Issues</a>
+    <a href="#files">Key Files</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<section id="overview">
+  <h2>1. Overview &amp; Purpose</h2>
+  <div class="finding note">
+    <h4>⚠ README.md / SCREENS.md are stale</h4>
+    <p>Both open with <em>"Everything runs on local dummy/mock data. There is no Firebase, no backend, no API, no real authentication..."</em> — false for the current source tree. Treat this document, not those files, as the source of truth for current state.</p>
+  </div>
+  <p>Two modules, switchable at runtime by an authorized user:</p>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>Module 1 — News</h3>
+      <p>District/regional news workflow: reporters file stories, editors review/publish, admins moderate. Public-facing reader: flip-card feed, short clips, search, categories.</p>
+    </div>
+    <div class="card">
+      <h3>Module 2 — Study &amp; Exam Prep</h3>
+      <p>Competitive government-exam prep (Police Constable, SI, Group-1/2/4, VRO, SSC, RRB, Bank, DSC) — syllabus content, quizzes, timed tests, leaderboards, performance analytics.</p>
+    </div>
+  </div>
+  <p>The web app is the desk/admin console for both modules; this Android app serves the public reader/student audience directly, <strong>and</strong> — via a newly added staff login — the same desk roles as the web console, sharing one Firebase project.</p>
+</section>
+
+<section id="stack">
+  <h2>2. Tech Stack</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>Language &amp; UI</h3>
+      <ul>
+        <li>100% Kotlin — no Java, no XML layouts, pure Jetpack Compose (Material3)</li>
+        <li>MVVM-ish: singleton repositories (StateFlow) as source of truth, thin ViewModels, composables read flows directly</li>
+        <li>No DI framework (no Hilt/Koin) — manual Kotlin <code>object</code> singletons</li>
+        <li>compileSdk/targetSdk 36, minSdk 24 (bumped 34→36 for Play Store)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Key libraries</h3>
+      <ul>
+        <li>Compose BOM 2024.06.00, navigation-compose 2.7.7</li>
+        <li>coil-compose 2.6.0 (image loading)</li>
+        <li>firebase-bom 33.1.2 → Auth, Realtime Database, Firestore</li>
+        <li>kotlinx-coroutines-play-services (Task↔coroutine adapters)</li>
+        <li>AGP 8.9.1, Kotlin 1.9.24, Gradle 8.11.1, JDK 17</li>
+      </ul>
+    </div>
+  </div>
+  <p class="callout">Firebase wiring is conditional: <code>build.gradle.kts</code> applies the <code>google-services</code> plugin only if <code>app/google-services.json</code> exists, mirrored into <code>BuildConfig.HAS_FIREBASE_CONFIG</code> so Gradle-time and runtime never disagree.</p>
+</section>
+
+<section id="architecture">
+  <h2>3. Architecture</h2>
+  <div class="mermaid">
+graph TD
+  MA["MainActivity.onCreate<br/>JVoiceApp()"] --> DECIDE{"Which session<br/>holds a user?"}
+  DECIDE -->|News session| NEWSNAV["news/navigation/JVoiceNavGraph"]
+  DECIDE -->|Study session| STUDYNAV["study/navigation/StudyNavGraph"]
+
+  CORE["core/*<br/>auth, data, firebase, flags, i18n<br/>(shared infra)"] --> NEWSNAV
+  CORE --> STUDYNAV
+  NEWSNAV --> AISHORTS["aishorts/*<br/>AI Shorts feature<br/>(Editor/Admin drawers only)"]
+  SHELL["shell/ModuleSwitch.kt<br/>cross-module switching (Super Admin)"] --> NEWSNAV
+  SHELL --> STUDYNAV
+  </div>
+  <h3>Package structure</h3>
+  <pre><code>com.jvoice/
+  core/        auth, data, firebase, flags, i18n — shared infrastructure
+  news/        Module 1 — data/model, data/repository, ui/{auth,reader,reporter,editor,admin,superadmin}, navigation
+  study/       Module 2 — data/model, data/mock, data/repository, engine, ui/{student,creator,examadmin,studyadmin,superadmin}, navigation
+  aishorts/    AI Shorts feature — data/model, data/mock, data/repository, domain/service, navigation, ui
+  shell/       ModuleSwitch.kt — cross-module switching plumbing</code></pre>
+  <p>Layering: <code>data/model</code> → <code>data/repository</code> (singleton objects, <code>MutableStateFlow</code>) → <code>ui/*ViewModel</code> (thin) → Compose screens. Hand-written <code>toMap()</code>/<code>...From()</code> codec pairs (<code>core/data/NewsCodec.kt</code>, <code>StudyCodec.kt</code>) deliberately avoid Firestore's reflection-based POJO mapping, to preserve the bilingual <code>LocalizedText</code> shape and avoid silent-null failures.</p>
+</section>
+
+<section id="backend">
+  <h2>4. Backend Integration</h2>
+  <p><strong>Two backends coexist at different maturity levels</strong> — both pointed at the same Firebase project (<code>jvoice-b4b2e</code>) the web console uses:</p>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3 style="color:var(--ok)">News module — real backend</h3>
+      <ul>
+        <li>Firestore: <code>articles, categories, newsNotifications, articleReports</code>, live <code>addSnapshotListener</code></li>
+        <li>Anonymous readers get a status-filtered query (required to satisfy Firestore security rules)</li>
+        <li>Writes are fire-and-forget — Firestore's offline cache + queued writes handle connectivity gaps ("usable for a reporter filing from a village with no signal")</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--warn)">Study module — still mock</h3>
+      <ul>
+        <li><code>StudyCodec.kt</code> + target Firestore collection names (<code>SUBJECTS, TOPICS, EXAM_TRACKS, STUDY_ARTICLES, QUESTIONS, QUIZZES, EXAMS</code>) are fully defined</li>
+        <li>But <code>StudyRepository.kt</code>/<code>ExamTrackRepository.kt</code> still initialize every StateFlow from <code>MockDataSource</code> and never touch Firestore</li>
+        <li>Only consumer of the codecs today: a debug-only one-off export path (<code>DevExport.kt</code> → <code>web/firebase/seed-content.mjs</code>)</li>
+      </ul>
+    </div>
+  </div>
+  <p>Realtime Database holds <code>users/{uid}</code> (role, isLogin kill-switch, forceLogoutAt, lastLoginAt, per-account update gate), top-level <code>/flags</code> (remote feature flags — same ones the web Feature Flags page writes), <code>/failedLoginAttempts</code>, <code>/passwordResetRequests</code>.</p>
+  <div class="finding note">
+    <h4>Study module session ignores real sign-in</h4>
+    <p><code>StudySessionViewModel.signInAs(role)</code> always sets <code>MockDataSource.demoAccounts[role]</code> — it never reads <code>SessionStore</code>, unlike the News module's equivalent. A real Firebase-authenticated Content Creator / Exam Admin / Study Admin / Super Admin entering the Study module is shown as a canned demo persona, not their real identity.</p>
+    <div class="file">study/ui/auth/StudySessionViewModel.kt vs news/data/repository (NewsRepository.signInAs)</div>
+  </div>
+</section>
+
+<section id="flows">
+  <h2>5. Key User Flows</h2>
+  <div class="mermaid">
+graph TD
+  LAND["LandingScreen"] --> TOGGLE{"Module toggle"}
+  TOGGLE -->|News/Study role tap| ANON["signInAs(role)<br/>local throwaway user, no credentials"]
+  ANON --> NAV1["Straight into module NavGraph"]
+
+  LAND --> STAFF["Staff sign-in"]
+  STAFF --> LOGIN["StaffLoginScreen → LoginViewModel.signIn()"]
+  LOGIN --> FBA["FirebaseAuth.signInWithEmailAndPassword"]
+  FBA --> RTDBREAD["Read users/{uid} from RTDB"]
+  RTDBREAD --> ROLE["Resolve JvRole"]
+  ROLE --> SS["SessionStore.save(user)"]
+  SS --> GATE["DeskSessionGate<br/>(kill-switch + version check)"]
+  GATE --> NAV2["Routed into owned module(s)<br/>via enterForDeskRole()"]
+  </div>
+
+  <table>
+    <tr><th>Role</th><th>Key screens</th></tr>
+    <tr><td>Reader</td><td>Flip-card feed, Clips, Study tab, Profile/Categories/Saved/Notifications, Search, News Detail, <strong>Comments</strong> (new, not in SCREENS.md)</td></tr>
+    <tr><td>Reporter</td><td>Dashboard, My News, Create/Edit News, submit for review</td></tr>
+    <tr><td>Editor</td><td>Dashboard, Review Queue, Article Review (approve/publish/reject/send-back), <strong>AI Shorts</strong> drawer item (new)</td></tr>
+    <tr><td>News Admin / Super Admin</td><td>News/category/reporter management, user/role/settings, <strong>AI Shorts + Video Templates</strong> (new)</td></tr>
+    <tr><td>Student (Study)</td><td>Exam picker → exam hub → dashboard/study/exams/leaderboard/profile</td></tr>
+    <tr><td>Content Creator / Exam Admin / Study Admin / Super Admin (Study)</td><td>CRUD for exam types, subjects, topics, content, question bank</td></tr>
+  </table>
+
+  <h3>AI Shorts pipeline (undocumented in SCREENS.md, fully built UI)</h3>
+  <div class="mermaid">
+graph LR
+  D["Dashboard"] --> C["Create Short"] --> S["AI Script"] --> T["Template Selection"] --> V["Voice Selection"] --> M["Media Selection + Trim Editor"] --> GR["Generation Review"] --> GP["Generation Progress"] --> P["Preview"]
+  </div>
+  <p class="callout">Every backing service (<code>aishorts/domain/service/AIShortServices.kt</code>) is an explicit <code>Mock*</code> stand-in — script generation splits the article's own sentences, TTS returns a fake <code>mock://voice/...</code> URI, rendering simulates progress. "Nothing here holds a key or talks to a provider" (source comment). This mirrors the web console's equally-simulated Shorts pipeline.</p>
+</section>
+
+<section id="state">
+  <h2>6. State Management &amp; Data Flow</h2>
+  <ul>
+    <li>Every repository is a Kotlin <code>object</code> singleton exposing <code>MutableStateFlow</code>/<code>StateFlow</code> — no Room/SQLite anywhere.</li>
+    <li><strong>News:</strong> UI → repository function → <code>Firestore.set/update/delete</code> (fire-and-forget) → attached listener echoes the change back into the StateFlow → Compose recomposes. Firestore persistence configured with unlimited cache size.</li>
+    <li><strong>Study:</strong> pure in-memory — every mutation does a direct <code>_stateFlow.update{}</code> with no external persistence; state resets on process death.</li>
+    <li><strong>Local-only device state:</strong> <code>ReadStateRepository</code>, <code>LanguagePreference</code>, <code>SessionStore</code> (SharedPreferences, <code>jvoice_desk_session</code>).</li>
+    <li><strong>Live RTDB signals:</strong> <code>FeatureFlags</code> and <code>ForceLogoutGuard</code> both "fail open" by design (missing/unreadable data → treated as enabled/no-op) — a deliberate documented safety choice.</li>
+  </ul>
+</section>
+
+<section id="status">
+  <h2>7. Implementation Status — Docs vs Actual Code</h2>
+  <table>
+    <tr><th>Area</th><th>SCREENS.md/README claim</th><th>Actual code</th></tr>
+    <tr><td>Backend</td><td>"No Firebase, no backend, no API"</td><td><span class="badge ok">Real</span> Firebase Auth + RTDB + Firestore (News), all live</td></tr>
+    <tr><td>News content</td><td>25 mock seeded articles</td><td><span class="badge ok">Real</span> — MockData.kt deleted; every flow starts empty and fills from Firestore</td></tr>
+    <tr><td>Clips tab</td><td>12 dummy clips, simulated playback</td><td><span class="badge bad">Broken</span> — starts empty, <strong>no code path populates it</strong> (verified via repo-wide search)</td></tr>
+    <tr><td>Comments/likes/reports</td><td>Not mentioned</td><td><span class="badge ok">Implemented</span>, in-memory (<code>EngagementRepository</code>)</td></tr>
+    <tr><td>AI Shorts</td><td>Not mentioned anywhere</td><td><span class="badge warn">Full UI, mocked backend</span> — 12-file module, 8-screen wizard, wired into 3 drawers</td></tr>
+    <tr><td>Study module</td><td>"10 exam types · 10 subjects · 42 topics · 44 articles · 137 questions"</td><td><span class="badge warn">Unchanged</span> — still 100% MockDataSource; Firestore migration only staged</td></tr>
+    <tr><td>Study desk identity</td><td>n/a</td><td><span class="badge bad">Bug</span> — always shows canned demo persona, ignores real sign-in (see §4)</td></tr>
+  </table>
+</section>
+
+<section id="issues">
+  <h2>8. Known Issues &amp; Risks</h2>
+
+  <div class="finding risk">
+    <h4>google-services.json committed to the repository</h4>
+    <p>Contains a real project id, RTDB URL and API key for <code>jvoice-b4b2e</code>. Typically restricted by package name/SHA-1 rather than a bearer secret, but committing it means anyone with repo access can build against the live production backend. <code>.gitignore</code> protects signing material (<code>*.jks</code>, <code>keystore.properties</code>) but has no equivalent rule for this file — worth a deliberate decision.</p>
+    <div class="file">android/app/google-services.json</div>
+  </div>
+
+  <div class="finding">
+    <h4>Release build is prepared but cannot actually be signed from this checkout</h4>
+    <p>Commit <code>f811f57</code> ("Prepare the Android app for a Play Store release build") correctly bumped compileSdk/targetSdk 34→36, AGP/Gradle versions, versionName to <code>1.0.0</code>, added conditional release-signing keyed on a gitignored <code>keystore.properties</code>, and enabled minify/shrink with real ProGuard keep rules. But no <code>keystore.properties</code> or <code>.jks</code> exists in this checkout (by design — gitignored) — so <code>canSignRelease</code> evaluates false here, and a release build from a fresh clone is <strong>unsigned</strong>. Whoever owns the keystore must supply it out-of-band.</p>
+    <div class="file">android/app/build.gradle.kts, android/app/proguard-rules.pro</div>
+  </div>
+
+  <div class="finding">
+    <h4>Clips tab silently non-functional</h4>
+    <p><code>ClipsRepository._clips</code> starts as an empty <code>MutableStateFlow</code> with no path anywhere that populates it. The Clips tab shows its empty state on every launch — a regression beyond what SCREENS.md's own "known limitations" section discloses.</p>
+    <div class="file">news/data/repository/ClipsRepository.kt, ui/.../VideoClipsScreen.kt</div>
+  </div>
+
+  <div class="finding risk">
+    <h4>Study desk-identity bug may misattribute authorship</h4>
+    <p>Because a real Firebase-authenticated Content Creator/Exam Admin/Study Admin/Super Admin is shown as a demo persona inside the Study module, content-authorship fields (e.g. <code>authorName</code>) written from that session could be wrong.</p>
+    <div class="file">study/ui/auth/StudySessionViewModel.kt</div>
+  </div>
+
+  <div class="finding note">
+    <h4>Stale KDoc comments</h4>
+    <p><code>SessionViewModel.kt</code>'s class doc ("Dummy session holder, no real authentication") is wrong for desk roles now that <code>NewsRepository.signInAs</code> threads through <code>SessionStore</code>. The equivalent comment on <code>StudySessionViewModel.kt</code> happens to still be accurate, since that migration hasn't landed.</p>
+  </div>
+
+  <div class="finding note">
+    <h4>DevExport runs on every debug launch</h4>
+    <p><code>MainActivity.onCreate</code> unconditionally calls <code>DevExport.exportIfNeeded()</code> (guarded by <code>BuildConfig.DEBUG</code>, so it can't run in release). Writes a full JSON dump of Study content to external files on every debug install. Both <code>DevExport.kt</code> and <code>SeedExportTest.kt</code> say in their own KDoc this is temporary and should be deleted once the Study→Firestore migration lands — it hasn't been.</p>
+    <div class="file">core/data/DevExport.kt, app/src/test/.../SeedExportTest.kt</div>
+  </div>
+
+  <div class="finding note">
+    <h4>Security rules are a real strength, but tightly coupled across the monorepo</h4>
+    <p>Role comes from a Firebase custom claim for Firestore; RTDB rules correctly restrict <code>users/</code> writes to <code>super_admin</code>. But the rules live in <code>web/firebase/</code>, not alongside the Android code — any change to <code>JvRole</code> codes must stay in lockstep with both rule files, which is a discoverability risk for anyone working only in <code>android/</code>.</p>
+    <div class="file">web/firebase/firestore.rules, database.rules.json vs android/.../core/auth/JvRole.kt</div>
+  </div>
+</section>
+
+<section id="files">
+  <h2>9. Key File Reference</h2>
+  <pre><code>Build/config: app/build.gradle.kts, build.gradle.kts, gradle.properties, AndroidManifest.xml, app/google-services.json, app/proguard-rules.pro
+Entry point: app/src/main/java/com/jvoice/news/MainActivity.kt
+Auth/session: core/auth/{AuthGate,SessionStore,LoginViewModel,StaffLoginScreen,ForceLogoutGuard,AppUpdateGate,DeskSessionGate,JvRole,JvUser}.kt
+Backend plumbing: core/data/{Firestore,NewsCodec,StudyCodec,StaffDirectory,DevExport}.kt, core/firebase/FirebaseAvailability.kt, core/flags/FeatureFlags.kt
+News repository (Firestore): news/data/repository/{NewsRepository,ClipsRepository,EngagementRepository,ReadStateRepository}.kt
+Study repository (mock): study/data/repository/{StudyRepository,ExamTrackRepository,ExamRepository,PerformanceRepository,LeaderboardRepository}.kt, study/data/mock/{MockDataSource,StudyContentData}.kt
+AI Shorts: aishorts/data/repository/AIShortRepository.kt, aishorts/domain/service/{AIShortServices,MediaIntelligence,TemplateEngine}.kt
+Navigation: news/navigation/{JVoiceNavGraph,NavigationShells,Routes}.kt, study/navigation/{StudyNavGraph,StudyShells,StudyRoutes}.kt, shell/ModuleSwitch.kt
+Backend rules/seed (sibling): web/firebase/{firestore.rules,database.rules.json,README.md,seed-staff.mjs,seed-content.mjs,seed-news.mjs}</code></pre>
+  <div class="crosslink">
+    <a href="web.html">→ Web App Documentation</a>
+    <a href="audit-report.html">→ Audit Report &amp; Cross-App Findings</a>
+  </div>
+</section>
+
+</div>
+<footer>J Voice project documentation — generated from a code-level audit of the merged monorepo.</footer>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });</script>
+</body>
+</html>
